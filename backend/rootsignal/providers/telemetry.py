@@ -28,8 +28,15 @@ class LogLine(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
 
 
+class TelemetryError(RuntimeError):
+    """The telemetry backend was unreachable, rejected the query, or returned bad data."""
+
+
 class TelemetryProvider(ABC):
     name: str
+
+    async def aclose(self) -> None:  # noqa: B027 - optional hook, no-op by default
+        """Release connections. Called on app shutdown."""
 
     @abstractmethod
     async def query_metrics(

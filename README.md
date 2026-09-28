@@ -2,7 +2,7 @@
 
 An AI SRE agent that investigates production incidents. It forms hypotheses, queries metrics, logs and recent changes to test them, and produces a root-cause analysis. Each claim in the analysis links to the evidence behind it, and confidence scores are computed from that evidence. Fixes are only proposed, and a human must approve one before it runs.
 
-> **Status:** Phase 1 (foundation) is complete. See [docs/PLAN.md](docs/PLAN.md) for the full 10-day roadmap.
+> **Status:** Phases 1–2 are done: the foundation, plus a demo system with fault injection and telemetry. See [docs/PLAN.md](docs/PLAN.md) for the full 10-day roadmap.
 
 ## Architecture
 
@@ -40,8 +40,54 @@ An AI SRE agent that investigates production incidents. It forms hypotheses, que
 cp .env.example .env          # LLM_PROVIDER=mock works with no keys
 docker compose up --build
 ```
-- Dashboard: http://localhost:5173
-- API docs: http://localhost:8000/docs
+
+| What | URL |
+|---|---|
+| RootSignal dashboard | http://localhost:5173 |
+| RootSignal API docs | http://localhost:8000/docs |
+| Grafana (demo metrics + logs) | http://localhost:3000 |
+| Prometheus (alerts under "Alerts") | http://localhost:9090 |
+| Fault control (Swagger UI) | http://localhost:8090/docs |
+| Demo gateway | http://localhost:8080 |
+
+## Demo system
+
+A small "production" system for RootSignal to investigate. `loadgen` sends it about 5 requests per second.
+
+```
+loadgen → gateway → checkout → inventory → Postgres
+                                   └──────→ Redis (cache)
+```
+
+Each service exposes Prometheus metrics at `/metrics` and writes JSON logs, which are shipped to Loki. Grafana opens directly on the **Demo services overview** dashboard.
+
+### Injecting faults
+
+| Scenario | Target | What you'll see |
+|---|---|---|
+| `bad_deploy` | checkout | Deploy event `1.8.0 → 1.9.0`, `KeyError: 'discount_code'`, ~40% 5xx, 502s at the gateway |
+| `db_pool_exhaustion` | inventory | "timed out acquiring database connection", pool in use = max, 503/502s |
+| `latency_spike` | inventory | p95 above 1s, "slow cache response" warnings, **no errors** |
+| `memory_leak` | checkout | Memory rising, then OOM-killed at 300 MB and restarted |
+
+Use the Swagger UI at http://localhost:8090/docs, or:
+
+```bash
+curl -X POST localhost:8090/scenarios/bad_deploy/enable    # PowerShell: use curl.exe
+curl localhost:8090/scenarios                              # what's active
+curl localhost:8090/changes                                # deploy / config events
+curl -X POST localhost:8090/reset                          # turn everything off
+```
+
+Services never log the name of the active scenario. Like a real on-call engineer, RootSignal has to work out the cause from the symptoms.
+
+### Querying telemetry through RootSignal
+
+```bash
+curl "localhost:8000/api/telemetry/services"
+curl "localhost:8000/api/telemetry/metrics?query=sum by (service) (rate(http_requests_total[1m]))&minutes=5"
+curl "localhost:8000/api/telemetry/logs?query={service=\"inventory\",level=\"error\"}&limit=20"
+```
 
 ### Run without Docker
 
@@ -59,6 +105,7 @@ cd dashboard && npm install && npm run dev
 
 ```bash
 cd backend && ruff check . && pytest -q
+cd services/demo && ruff check . && pytest -q   # inventory DB tests need INVENTORY_TEST_DB_URL
 cd dashboard && npm run build
 ```
 
@@ -72,11 +119,12 @@ backend/rootsignal/
   services/      investigation persistence (used by API, CLI, MCP)
   api/           FastAPI routes + response schemas
 dashboard/       React + TypeScript UI
-services/        demo microservices + fault injection (Phase 2)
+services/demo/   gateway, checkout, inventory, fault-control, loadgen (one image)
+infra/           Prometheus config + alert rules, Grafana provisioning + dashboard
 docs/PLAN.md     roadmap and checklist
 ```
 
-## API (Phase 1)
+## API
 
 | Method | Path | Description |
 |---|---|---|
@@ -84,3 +132,6 @@ docs/PLAN.md     roadmap and checklist
 | POST | `/api/investigations` | Start an investigation from an alert |
 | GET | `/api/investigations?state=` | List investigations |
 | GET | `/api/investigations/{id}` | Investigation with its state history |
+| GET | `/api/telemetry/services` | Services that have metrics |
+| GET | `/api/telemetry/metrics?query=&minutes=&step=` | PromQL range query |
+| GET | `/api/telemetry/logs?query=&minutes=&limit=` | LogQL query (newest lines, in time order) |
