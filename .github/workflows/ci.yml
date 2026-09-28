@@ -22,6 +22,36 @@ jobs:
       - run: ruff format --check .
       - run: pytest -q  # uses MockLLMProvider + SQLite: no API keys or services needed
 
+  demo:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/demo
+    services:
+      postgres:  # real Postgres so the connection-pool tests run
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: inventory
+          POSTGRES_PASSWORD: inventory
+          POSTGRES_DB: inventory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inventory"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      INVENTORY_TEST_DB_URL: postgresql://inventory:inventory@localhost:5432/inventory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+      - run: uv pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
   dashboard:
     runs-on: ubuntu-latest
     defaults:
@@ -37,8 +67,16 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-  compose:
+  infra:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose config --quiet
+      - name: docker compose config
+        run: docker compose config --quiet
+      - name: promtool check (config + alert rules)
+        run: >-
+          docker run --rm -v "$PWD/infra/prometheus:/etc/prometheus:ro"
+          --entrypoint promtool prom/prometheus:v3.5.0
+          check config /etc/prometheus/prometheus.yml
+      - name: grafana dashboards are valid JSON
+        run: for f in infra/grafana/dashboards/*.json; do python3 -m json.tool "$f" > /dev/null; done

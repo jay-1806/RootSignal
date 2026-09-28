@@ -1,0 +1,39 @@
+# Alert rules. In Phase 3 Alertmanager forwards these to RootSignal to start investigations.
+groups:
+  - name: demo-services
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[1m]))
+            / sum by (service) (rate(http_requests_total[1m])) > 0.05
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} of requests are failing"
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[1m]))) > 0.5
+        for: 30s
+        labels:
+          severity: high
+        annotations:
+          summary: "{{ $labels.service }}: p95 latency is {{ $value | humanizeDuration }}"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 150 * 1024 * 1024
+        for: 30s
+        labels:
+          severity: high
+        annotations:
+          summary: "{{ $labels.service }}: resident memory is {{ $value | humanize1024 }}B"
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is not responding to scrapes"

@@ -31,11 +31,12 @@
 - [x] Docker Compose + CI
 
 ### Phase 2 — Demo system + telemetry (Days 2–4)
-- [ ] 3 demo services: `gateway → checkout → inventory` + Postgres/Redis
-- [ ] Structured JSON logs → Loki; `/metrics` → Prometheus; Grafana dashboards
-- [ ] Fault-control service with 4 scenarios: bad deploy, DB pool exhaustion, latency spike, memory leak
-- [ ] Load generator
-- [ ] `PrometheusLokiTelemetryProvider`
+- [x] 3 demo services: `gateway → checkout → inventory` + Postgres/Redis
+- [x] Structured JSON logs → Loki; `/metrics` → Prometheus; Grafana dashboard
+- [x] Fault-control service with 4 scenarios: bad deploy, DB pool exhaustion, latency spike, memory leak
+- [x] Load generator
+- [x] `PrometheusLokiTelemetryProvider` + `/api/telemetry/*` endpoints
+- [x] Prometheus alert rules (Alertmanager hookup is Phase 3)
 
 ### Phase 3 — The brain (Days 4–7)
 - [ ] Gemini + Grok providers (structured Pydantic output, fallback, cost/latency tracking)

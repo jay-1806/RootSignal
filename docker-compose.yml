@@ -1,7 +1,25 @@
 # RootSignal local stack. Run: docker compose up --build
-# Phase 2 adds: demo services (gateway/checkout/inventory), redis, prometheus, loki, grafana.
+#
+#   RootSignal:   dashboard :5173   backend :8000   postgres (pgvector)
+#   Demo system:  gateway :8080 -> checkout -> inventory (+ inventory-db, redis), loadgen
+#   Faults:       fault-control :8090  (Swagger UI at /docs)
+#   Telemetry:    prometheus :9090   loki :3100   grafana :3000
+
+x-demo-env: &demo-env
+  REDIS_URL: redis://redis:6379/0
+  LOKI_URL: http://loki:3100
+  CHECKOUT_URL: http://checkout:8000
+  INVENTORY_URL: http://inventory:8000
+  INVENTORY_DB_URL: postgresql://inventory:inventory@inventory-db:5432/inventory
+
+x-demo: &demo
+  build: ./services/demo
+  image: rootsignal-demo:local
+  restart: unless-stopped
+  environment: *demo-env
 
 services:
+  # ------------------------------------------------------------------ RootSignal
   postgres:
     image: pgvector/pgvector:pg16  # Postgres with pgvector for incident memory (Phase 3)
     environment:
@@ -25,6 +43,8 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://rootsignal:rootsignal@postgres:5432/rootsignal
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
     ports:
       - "8000:8000"
     depends_on:
@@ -39,6 +59,104 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+
+  # ------------------------------------------------------------------ demo system
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  inventory-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory
+      POSTGRES_DB: inventory
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    <<: *demo
+    command: ["uvicorn", "demo.gateway:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8080:8000"
+    depends_on:
+      - checkout
+      - inventory
+
+  checkout:
+    <<: *demo
+    command: ["uvicorn", "demo.checkout:app", "--host", "0.0.0.0", "--port", "8000"]
+    mem_limit: 300m  # memory_leak scenario gets OOM-killed here and restarts
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  inventory:
+    <<: *demo
+    command: ["uvicorn", "demo.inventory:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *demo-env
+      DB_POOL_SIZE: "5"
+    depends_on:
+      redis:
+        condition: service_healthy
+      inventory-db:
+        condition: service_healthy
+
+  fault-control:
+    <<: *demo
+    command: ["uvicorn", "demo.faultctl:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8090:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  loadgen:
+    <<: *demo
+    command: ["python", "-m", "demo.loadgen"]
+    environment:
+      GATEWAY_URL: http://gateway:8000
+      RPS: "5"
+    depends_on:
+      - gateway
+
+  # ------------------------------------------------------------------ telemetry
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:3.5.3  # default single-node config, filesystem storage
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    environment:
+      # Local demo only: no login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/demo-overview.json
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
 
 volumes:
   pgdata:
