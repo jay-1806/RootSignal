@@ -39,12 +39,16 @@
 - [x] Prometheus alert rules (Alertmanager hookup is Phase 3)
 
 ### Phase 3 — The brain (Days 4–7)
-- [ ] Gemini + Grok providers (structured Pydantic output, fallback, cost/latency tracking)
-- [ ] Orchestrator: runs the state machine end-to-end, saving every step
-- [ ] Evidence scoring → computed confidence, refinement loop
-- [ ] Change correlation (deploy version / GitHub commits)
-- [ ] Incident memory: embeddings + similar-incident search
-- [ ] Alertmanager webhook → auto-start investigation
+- [x] Gemini + Grok providers (structured Pydantic output, fallback, cost/latency tracking)
+- [x] Orchestrator: runs the state machine end-to-end, saving every step
+- [x] Check catalog: 11 read-only, templated checks (the LLM picks, code queries)
+- [x] Evidence scoring → computed confidence, refinement loop
+- [x] Rule-based reasoner (mock mode, LLM fallback, eval baseline)
+- [x] Change correlation (running version + deploy log)
+- [x] Incident memory: pgvector similar-incident search (human-confirmed RCAs only)
+- [x] Alertmanager webhook → auto-start investigation (deduplicated)
+- [x] Alembic migrations (existing databases upgrade in place)
+- [ ] GitHub commits as a change source (moved to future work)
 
 ### Phase 4 — Interfaces + remediation (Days 7–9)
 - [ ] Dashboard: incident list, timeline, hypotheses, evidence, RCA, approve button

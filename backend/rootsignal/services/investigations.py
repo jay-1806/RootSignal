@@ -1,16 +1,18 @@
-"""Investigation persistence. The API, and later the orchestrator/CLI/MCP, all go through here."""
+"""Investigation persistence. The API, orchestrator, CLI and MCP all go through here."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from rootsignal.core.models import Alert, StateChange
-from rootsignal.core.state_machine import InvestigationState, assert_transition
+from rootsignal.core.state_machine import TERMINAL_STATES, InvestigationState, assert_transition
 from rootsignal.db.models import InvestigationRow
 
 
 async def create_investigation(session: AsyncSession, alert: Alert) -> InvestigationRow:
     first = StateChange(
-        from_state=None, to_state=InvestigationState.RECEIVED, note="alert received"
+        from_state=None,
+        to_state=InvestigationState.RECEIVED,
+        note=f"alert received from {alert.source}",
     )
     row = InvestigationRow(
         title=alert.title,
@@ -21,6 +23,8 @@ async def create_investigation(session: AsyncSession, alert: Alert) -> Investiga
         alert=alert.model_dump(mode="json"),
         history=[first.model_dump(mode="json")],
         hypotheses=[],
+        iterations=0,
+        reasoner="",
     )
     session.add(row)
     await session.commit()
@@ -32,6 +36,21 @@ async def get_investigation(
     session: AsyncSession, investigation_id: str
 ) -> InvestigationRow | None:
     return await session.get(InvestigationRow, investigation_id)
+
+
+async def find_active(session: AsyncSession, title: str, service: str) -> InvestigationRow | None:
+    """An open investigation for the same alert and service (used to deduplicate alerts)."""
+    stmt = (
+        select(InvestigationRow)
+        .where(
+            InvestigationRow.title == title,
+            InvestigationRow.service == service,
+            InvestigationRow.state.not_in([s.value for s in TERMINAL_STATES]),
+        )
+        .order_by(InvestigationRow.created_at.desc())
+        .limit(1)
+    )
+    return (await session.scalars(stmt)).first()
 
 
 async def list_investigations(
@@ -48,6 +67,7 @@ async def transition_investigation(
 ) -> InvestigationRow:
     """Move to `target` if the state machine allows it, and record the change.
 
+    Pending changes to other columns on `row` are committed in the same transaction.
     Raises InvalidTransitionError otherwise.
     """
     current = InvestigationState(row.state)

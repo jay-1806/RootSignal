@@ -11,6 +11,18 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:  # same image as docker-compose, to test the Alembic migrations
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rootsignal
+          POSTGRES_PASSWORD: rootsignal
+          POSTGRES_DB: rootsignal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rootsignal"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -20,7 +32,11 @@ jobs:
       - run: uv pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
-      - run: pytest -q  # uses MockLLMProvider + SQLite: no API keys or services needed
+      - run: pytest -q  # mock LLM + SQLite + scripted telemetry: no keys or services needed
+      - name: alembic migrations (upgrade, downgrade, upgrade)
+        env:
+          DATABASE_URL: postgresql+asyncpg://rootsignal:rootsignal@localhost:5432/rootsignal
+        run: alembic upgrade head && alembic downgrade base && alembic upgrade head
 
   demo:
     runs-on: ubuntu-latest
@@ -78,5 +94,10 @@ jobs:
           docker run --rm -v "$PWD/infra/prometheus:/etc/prometheus:ro"
           --entrypoint promtool prom/prometheus:v3.5.0
           check config /etc/prometheus/prometheus.yml
+      - name: amtool check (alertmanager config)
+        run: >-
+          docker run --rm -v "$PWD/infra/alertmanager:/etc/alertmanager:ro"
+          --entrypoint amtool prom/alertmanager:v0.28.1
+          check-config /etc/alertmanager/alertmanager.yml
       - name: grafana dashboards are valid JSON
         run: for f in infra/grafana/dashboards/*.json; do python3 -m json.tool "$f" > /dev/null; done

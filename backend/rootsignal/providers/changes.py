@@ -22,8 +22,15 @@ class Change(BaseModel):
     ref: str = ""  # commit SHA, image tag, or URL
 
 
+class ChangeProviderError(RuntimeError):
+    """The change source was unreachable or returned bad data."""
+
+
 class ChangeProvider(ABC):
     name: str
+
+    async def aclose(self) -> None:  # noqa: B027 - optional hook
+        """Release connections. Called on app shutdown."""
 
     @abstractmethod
     async def recent_changes(self, service: str | None, since: datetime) -> list[Change]:
