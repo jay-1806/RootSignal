@@ -45,7 +45,7 @@ docker compose up --build
 |---|---|
 | RootSignal dashboard | http://localhost:5173 |
 | RootSignal API docs | http://localhost:8000/docs |
-| Grafana (demo metrics + logs) | http://localhost:3000 |
+| Grafana (demo metrics + logs) | http://localhost:3001 (change with `GRAFANA_PORT` in `.env`) |
 | Prometheus (alerts under "Alerts") | http://localhost:9090 |
 | Fault control (Swagger UI) | http://localhost:8090/docs |
 | Demo gateway | http://localhost:8080 |
