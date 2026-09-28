@@ -3,7 +3,7 @@
 #   RootSignal:   dashboard :5173   backend :8000   postgres (pgvector)
 #   Demo system:  gateway :8080 -> checkout -> inventory (+ inventory-db, redis), loadgen
 #   Faults:       fault-control :8090  (Swagger UI at /docs)
-#   Telemetry:    prometheus :9090   loki :3100   grafana :3000
+#   Telemetry:    prometheus :9090   loki :3100   grafana :3001
 
 x-demo-env: &demo-env
   REDIS_URL: redis://redis:6379/0
@@ -153,7 +153,7 @@ services:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3001}:3000"  # 3000 is often taken by other local dev servers
     depends_on:
       - prometheus
       - loki
