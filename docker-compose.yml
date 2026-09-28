@@ -1,0 +1,44 @@
+# RootSignal local stack. Run: docker compose up --build
+# Phase 2 adds: demo services (gateway/checkout/inventory), redis, prometheus, loki, grafana.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16  # Postgres with pgvector for incident memory (Phase 3)
+    environment:
+      POSTGRES_USER: rootsignal
+      POSTGRES_PASSWORD: rootsignal
+      POSTGRES_DB: rootsignal
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rootsignal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rootsignal:rootsignal@postgres:5432/rootsignal
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard:
+    build: ./dashboard
+    environment:
+      API_URL: http://backend:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
