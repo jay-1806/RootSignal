@@ -3,7 +3,8 @@
 #   RootSignal:   dashboard :5173   backend :8000   postgres (pgvector)
 #   Demo system:  gateway :8080 -> checkout -> inventory (+ inventory-db, redis), loadgen
 #   Faults:       fault-control :8090  (Swagger UI at /docs)
-#   Telemetry:    prometheus :9090   loki :3100   grafana :3001
+#   Telemetry:    prometheus :9090   alertmanager :9093   loki :3100   grafana :3001
+#   Flow:         fault -> Prometheus alert -> Alertmanager -> backend webhook -> investigation
 
 x-demo-env: &demo-env
   REDIS_URL: redis://redis:6379/0
@@ -45,6 +46,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://rootsignal:rootsignal@postgres:5432/rootsignal
       PROMETHEUS_URL: http://prometheus:9090
       LOKI_URL: http://loki:3100
+      CHANGES_URL: http://fault-control:8000
     ports:
       - "8000:8000"
     depends_on:
@@ -136,6 +138,15 @@ services:
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     ports:
       - "9090:9090"
+    depends_on:
+      - alertmanager
+
+  alertmanager:  # forwards firing alerts to the backend webhook
+    image: prom/alertmanager:v0.28.1
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
 
   loki:
     image: grafana/loki:3.5.3  # default single-node config, filesystem storage

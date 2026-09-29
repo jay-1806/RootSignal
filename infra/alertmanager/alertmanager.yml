@@ -1,0 +1,17 @@
+# Forward every firing alert to RootSignal, which starts an investigation per alert.
+route:
+  receiver: rootsignal
+  group_by: [alertname, service]
+  group_wait: 10s        # short for demos; production is usually 30s+
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: rootsignal
+    webhook_configs:
+      - url: http://backend:8000/api/webhooks/alertmanager
+        send_resolved: false
+        # If ALERT_WEBHOOK_TOKEN is set on the backend, add:
+        # http_config:
+        #   authorization:
+        #     credentials: <same token>

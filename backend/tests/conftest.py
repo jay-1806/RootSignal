@@ -8,11 +8,16 @@ from rootsignal.config import Settings
 from rootsignal.main import create_app
 
 
-@pytest.fixture
-def client(tmp_path: Path) -> Iterator[TestClient]:
-    settings = Settings(
+def sqlite_settings(tmp_path: Path, **overrides) -> Settings:
+    return Settings(
         llm_provider="mock",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        **overrides,
     )
-    with TestClient(create_app(settings)) as c:
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> Iterator[TestClient]:
+    """API client with autostart off: investigations stay in RECEIVED unless a test runs them."""
+    with TestClient(create_app(sqlite_settings(tmp_path, autostart=False), changes=None)) as c:
         yield c
