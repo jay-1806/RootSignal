@@ -158,3 +158,11 @@ def test_factory():
     assert isinstance(get_llm_provider(no_fb, c), GrokProvider)
     with pytest.raises(ValueError, match="GEMINI_API_KEY"):
         get_llm_provider(Settings(llm_provider="gemini", gemini_api_key=""), c)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ['"xai-abc123"', "'xai-abc123'", "xai-abc123\r", "  xai-abc123  ", "Bearer xai-abc123"],
+)
+def test_api_keys_are_cleaned(raw):
+    assert Settings(grok_api_key=raw).grok_api_key == "xai-abc123"
