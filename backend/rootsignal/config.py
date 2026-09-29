@@ -1,7 +1,17 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def clean_secret(value: str) -> str:
+    """Undo common copy-paste mistakes: surrounding quotes, whitespace or a Windows
+    line ending (\\r), and a pasted 'Bearer ' prefix."""
+    value = (value or "").strip().strip("\"'").strip()
+    if value.lower().startswith("bearer "):
+        value = value[7:].strip()
+    return value
 
 
 class Settings(BaseSettings):
@@ -42,6 +52,11 @@ class Settings(BaseSettings):
     # --- API
     cors_origins: str = "http://localhost:5173"
     alert_webhook_token: str = ""  # if set, webhooks must send "Authorization: Bearer <token>"
+
+    @field_validator("gemini_api_key", "grok_api_key", "alert_webhook_token", mode="before")
+    @classmethod
+    def _clean_secret(cls, value: str) -> str:
+        return clean_secret(value)
 
     @property
     def cors_origin_list(self) -> list[str]:
